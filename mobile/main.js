@@ -67,15 +67,21 @@ function eyesAnalyze(desc) {
         if (screenCaptureReady) {
             var img = captureScreen();
             if (img) {
-                var tmpPath = "/sdcard/dp_eyes_" + Date.now() + ".png";
-                images.save(img, tmpPath, "png");
+                // 缩小到 540 宽，降低质量，控制大小在 200KB 以内
+                var w = img.getWidth();
+                var h = img.getHeight();
+                var scale = 540.0 / w;
+                var smallImg = images.scale(img, scale, scale);
                 img.recycle();
+                var tmpPath = "/sdcard/dp_eyes_" + Date.now() + ".jpg";
+                images.save(smallImg, tmpPath, "jpg", 60);  // quality=60
+                smallImg.recycle();
                 // 读取文件转 base64
                 var bytes = files.readBytes(tmpPath);
                 importClass("android.util.Base64");
                 imgB64 = Base64.encodeToString(bytes, Base64.NO_WRAP);
                 files.remove(tmpPath);
-                log("eyes: 截图 base64 " + Math.round(imgB64.length / 1024) + "KB");
+                log("eyes: 截图 base64 " + Math.round(imgB64.length / 1024) + "KB (" + Math.round(w * scale) + "x" + Math.round(h * scale) + ")");
             }
         }
     } catch (e) {

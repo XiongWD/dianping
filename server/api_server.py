@@ -24,6 +24,9 @@ SCREENSHOT_DIR.mkdir(parents=True, exist_ok=True)
 class DianpingAPIHandler(BaseHTTPRequestHandler):
     """HTTP API"""
 
+    # 允许最大 10MB 请求体
+    max_body_length = 10 * 1024 * 1024"
+
     def do_GET(self):
         parsed = urlparse(self.path)
         params = parse_qs(parsed.query)
