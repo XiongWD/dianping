@@ -3,6 +3,7 @@
 供手机端 AutoJs6 拉取内容 + 上报结果 + 截图分析
 """
 import json
+import hashlib
 import os
 import cgi
 import uuid
@@ -83,6 +84,13 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
                 "ok": True,
                 "pages_analyzed": result.get("total_analyzed", 0) if result else 0,
             })
+
+        elif parsed.path == "/api/collect/stats":
+            from collect_db import get_stats, get_pending
+            stats = get_stats()
+            pending = len(get_pending(100))
+            stats["pending_vl"] = pending
+            self._json_response(stats)
 
         elif parsed.path.startswith("/api/screenshots/"):
             # 查看截图
@@ -168,54 +176,82 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
 
             # 解码 base64 截图
             screenshot_file = None
+            is_dup = False
             if screenshot_b64:
                 try:
                     import base64 as b64mod
                     img_bytes = b64mod.b64decode(screenshot_b64)
+                    img_hash = hashlib.md5(img_bytes).hexdigest()
                     filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
                     filepath = SCREENSHOT_DIR / filename
                     with open(filepath, "wb") as f:
                         f.write(img_bytes)
                     screenshot_file = filename
-                    import sys
-                    print(f"[eyes] 截图已保存(base64): {filename} ({len(img_bytes)//1024}KB)", flush=True)
+
+                    # 记录到采集数据库
+                    from collect_db import record_screenshot
+                    _, is_dup = record_screenshot(
+                        filename=filename,
+                        description=desc,
+                        node_count=0,  # 后面更新
+                        ui_tree=ui_tree,
+                        img_hash=img_hash,
+                        file_size=len(img_bytes),
+                        width=540,  # 手机端已压缩到540宽
+                        height=1170,
+                    )
+
+                    if is_dup:
+                        print(f"[eyes] 重复截图，跳过: {img_hash[:8]}", flush=True)
+                        filepath.unlink(missing_ok=True)  # 删除重复文件
+                        screenshot_file = None
+                    else:
+                        print(f"[eyes] 截图已保存: {filename} ({len(img_bytes)//1024}KB) hash={img_hash[:8]}", flush=True)
                 except Exception as e:
                     print(f"[eyes] base64解码失败: {e}", flush=True)
+                    import traceback; traceback.print_exc(flush=True)
 
             # 解析节点
             node_count = 0
             try:
-                nodes = json.loads(ui_tree)
+                nodes = json.loads(ui_tree) if isinstance(ui_tree, str) else ui_tree
                 node_count = len(nodes)
                 print(f"[eyes] {desc} | {node_count} nodes" + (f" | {screenshot_file}" if screenshot_file else " | 无截图"), flush=True)
-                for n in nodes[:10]:
-                    if n.get("t") or n.get("d"):
-                        print(f"  [{n.get('cls','')}] {n.get('t','')} / {n.get('d','')} @ {n.get('b','')}")
             except:
                 pass
 
-            # VL 视觉分析（后台执行，不阻塞响应）
-            if screenshot_file:
+            # VL 视觉分析（后台执行，异步）
+            if screenshot_file and not is_dup:
                 try:
                     import threading
-                    def _vl_task():
+                    def _vl_task(_filepath, _filename):
                         try:
+                            from collect_db import mark_annotating, update_vl_result
                             from vision_analyzer import analyze_for_yolo
-                            vl_result = analyze_for_yolo(str(filepath))
+                            mark_annotating(_filename)
+                            vl_result = analyze_for_yolo(str(_filepath))
                             page_type = vl_result.get("page_type", "unknown")
                             main_content = vl_result.get("main_content", "")[:200]
-                            print(f"[eyes] VL分析: {page_type} | {main_content}", flush=True)
+                            elem_count = len(vl_result.get("elements", []))
+                            update_vl_result(_filename, vl_result)
+                            print(f"[eyes] VL完成: {page_type} | {elem_count}元素 | {main_content}", flush=True)
                         except Exception as e:
-                            print(f"[eyes] VL分析失败: {e}", flush=True)
-                    threading.Thread(target=_vl_task, daemon=True).start()
+                            print(f"[eyes] VL失败: {e}", flush=True)
+                            import traceback; traceback.print_exc(flush=True)
+                    threading.Thread(target=_vl_task, args=(filepath, screenshot_file), daemon=True).start()
                 except Exception as e:
                     print(f"[eyes] VL启动失败: {e}")
 
+            # 返回采集统计
+            from collect_db import get_stats
+            stats = get_stats()
             self._json_response({
                 "ok": True,
                 "summary": f"截图已保存, {node_count} 个控件节点",
                 "screenshot": screenshot_file,
                 "description": desc,
+                "is_dup": is_dup,
+                "stats": stats,
             })
             return
 

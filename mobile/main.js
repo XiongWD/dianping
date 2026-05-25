@@ -274,6 +274,91 @@ function reportResult(packId, status) {
     try { http.postJson(CONFIG.apiBase + "/api/report", { pack_id: packId, status: status, result: {} }); } catch (e) { log("上报失败: " + e); }
 }
 
+// ============ 数据采集 ============
+function collectRun() {
+    log("采集模式启动");
+    toast("数据采集模式：自动浏览+截图");
+
+    // 确保在大众点评
+    var currentPkg = currentPackage();
+    if (currentPkg !== CONFIG.dianpingPackage) {
+        log("启动大众点评...");
+        app.launch(CONFIG.dianpingPackage);
+        sleep(CONFIG.timeout.appLaunch);
+    }
+
+    var totalShots = 0;
+    var maxShots = 20;  // 一轮最多20张
+    var pages = ["首页", "商家详情"];  // 先覆盖这两个
+
+    // ===== 首页采集 =====
+    log("--- 首页采集 ---");
+    // 首页上滑3次，每次截一张
+    eyesAnalyze("首页-初始");
+    totalShots++;
+    for (var i = 0; i < 3 && totalShots < maxShots; i++) {
+        var sx = random(200, 400);
+        var sy = random(1200, 1600);
+        swipe(sx, sy, sx, sy - random(400, 700), random(400, 800));
+        sleep(random(2000, 4000));
+        eyesAnalyze("首页-滑动" + (i + 1));
+        totalShots++;
+    }
+
+    // ===== 点击进商家详情 =====
+    log("--- 商家详情采集 ---");
+    // 回到顶部
+    swipe(300, 500, 300, 1500, 300);
+    sleep(1000);
+
+    // 尝试点击前3个商家
+    for (var shopIdx = 0; shopIdx < 3 && totalShots < maxShots; shopIdx++) {
+        // 查找可点击的内容卡片（通常有图片+文字）
+        var card = className("android.widget.RelativeLayout").clickable(true).findOne(3000);
+        if (!card) {
+            log("未找到可点击的商家卡片");
+            break;
+        }
+
+        var cardBounds = card.bounds();
+        log("点击商家卡片 @ " + cardBounds);
+        click(cardBounds.centerX(), cardBounds.centerY());
+        sleep(random(3000, 5000));
+
+        // 检查是否进入了商家详情页
+        var isDetail = textContains("地址").findOne(2000) || textContains("人均").findOne(2000) || textContains("营业").findOne(2000);
+        if (isDetail) {
+            log("进入商家详情页");
+            // 商家详情页截图
+            eyesAnalyze("商家详情-顶部");
+            totalShots++;
+
+            // 向下滑动2次
+            for (var j = 0; j < 2 && totalShots < maxShots; j++) {
+                scrollDown();
+                sleep(random(2000, 3000));
+                eyesAnalyze("商家详情-滑动" + (j + 1));
+                totalShots++;
+            }
+
+            // 返回首页
+            back();
+            sleep(random(2000, 3000));
+        } else {
+            log("未进入商家详情，返回");
+            back();
+            sleep(1000);
+        }
+
+        // 滑动到下一个卡片
+        swipe(300, 1200, 300, 600, 500);
+        sleep(1000);
+    }
+
+    log("采集完成，共 " + totalShots + " 张");
+    toast("采集完成：" + totalShots + " 张截图");
+}
+
 // ============ 连续运行 ============
 function runLoop() {
     var interval = CONFIG.publishInterval;
@@ -289,7 +374,7 @@ function runLoop() {
 }
 
 // ============ 入口 ============
-var MODES = ["养号浏览", "发布笔记", "连续运行", "截图分析"];
+var MODES = ["养号浏览", "发布笔记", "连续运行", "截图分析", "数据采集"];
 
 var choice = dialogs.singleChoice("选择运行模式", MODES, 0);
 if (choice < 0) { toast("已取消"); }
@@ -305,3 +390,4 @@ else if (choice === 3) {
     }
     eyesAnalyze("截图分析");
 }
+else if (choice === 4) { collectRun(); }
