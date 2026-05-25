@@ -419,8 +419,44 @@ function runLoop() {
     toast("今日任务完成");
 }
 
+// ============ 控件树调试 ============
+function dumpUITree() {
+    var root = auto.root;
+    if (!root) {
+        log("ERROR: auto.root is null, 无障碍服务未连接");
+        return;
+    }
+    var lines = [];
+    function walk(node, depth) {
+        if (!node || depth > 6) return;
+        var indent = "";
+        for (var i = 0; i < depth; i++) indent += "  ";
+        var cls = (node.className() || "").split(".").pop();
+        var t = node.text() || "";
+        var d = node.desc() || "";
+        var click = node.clickable() ? "[C]" : "";
+        var scroll = node.scrollable() ? "[S]" : "";
+        var b = node.bounds();
+        var boundsStr = b ? (b.left + "," + b.top + "-" + b.right + "," + b.bottom) : "?";
+        var id = node.id() || "";
+        var info = indent + cls + click + scroll + " b=" + boundsStr;
+        if (id) info += " id=" + id;
+        if (t) info += " t=\"" + t.substring(0, 20) + "\"";
+        if (d) info += " d=\"" + d.substring(0, 20) + "\"";
+        lines.push(info);
+        for (var i = 0; i < node.childCount() && lines.length < 80; i++) {
+            walk(node.child(i), depth + 1);
+        }
+    }
+    walk(root, 0);
+    for (var i = 0; i < lines.length; i++) {
+        log(lines[i]);
+    }
+    log("--- 共 " + lines.length + " 个节点 ---");
+}
+
 // ============ 入口 ============
-var MODES = ["养号浏览", "发布笔记", "连续运行", "截图分析", "数据采集"];
+var MODES = ["养号浏览", "发布笔记", "连续运行", "截图分析", "数据采集", "控件树调试"];
 
 var choice = dialogs.singleChoice("选择运行模式", MODES, 0);
 if (choice < 0) { toast("已取消"); }
@@ -437,3 +473,12 @@ else if (choice === 3) {
     eyesAnalyze("截图分析");
 }
 else if (choice === 4) { collectRun(); }
+else if (choice === 5) {
+    var currentPkg = currentPackage();
+    if (currentPkg !== CONFIG.dianpingPackage) {
+        log("启动大众点评...");
+        app.launch(CONFIG.dianpingPackage);
+        sleep(CONFIG.timeout.appLaunch);
+    }
+    dumpUITree();
+}
