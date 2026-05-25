@@ -134,13 +134,18 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        # JSON 模式（base64 截图）
-        if "application/json" in content_type or content_type.startswith("text/") or not content_type:
+        # 先尝试 JSON 解析（不管 Content-Type）
+        data = None
+        try:
             raw = json.loads(body)
-            # AutoJs6 可能传了双重 JSON 字符串
             if isinstance(raw, str):
                 raw = json.loads(raw)
-            data = raw if isinstance(raw, dict) else {}
+            if isinstance(raw, dict):
+                data = raw
+        except:
+            pass
+
+        if data is not None:
             desc = data.get("description", "unknown")
             ui_tree = data.get("ui_tree", "[]")
             screenshot_b64 = data.get("screenshot_b64", "")
@@ -166,7 +171,7 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             try:
                 nodes = json.loads(ui_tree)
                 node_count = len(nodes)
-                print(f"[eyes] {desc} | {node_count} nodes", flush=True + (f" | {screenshot_file}" if screenshot_file else " | 无截图"))
+                print(f"[eyes] {desc} | {node_count} nodes" + (f" | {screenshot_file}" if screenshot_file else " | 无截图"), flush=True)
                 for n in nodes[:10]:
                     if n.get("t") or n.get("d"):
                         print(f"  [{n.get('cls','')}] {n.get('t','')} / {n.get('d','')} @ {n.get('b','')}")
