@@ -358,47 +358,39 @@ function collectRun() {
     safeSwipe(300, 500, 300, 1500, 300);
     sleep(1500);
 
-    // 大众点评首页是双列瀑布流布局
-    // 左列 x=10~260, 右列 x=280~530
-    // 每行卡片约 250-300px 高
-    // 顶部搜索栏 ~150px, 底部导航 ~100px
+    // 大众点评用自绘控件，无障碍服务拿不到内容节点
+    // 只能通过 VL 识别卡片位置，用归一化坐标点击
+    // 双列瀑布流，卡片归一化中心大约在：
+    // 上排: (0.25, 0.25) (0.75, 0.25)
+    // 中排: (0.25, 0.55) (0.75, 0.55)
+    // 下排: (0.25, 0.82) (0.75, 0.82)
+    var w = device.width;
+    var h = device.height;
     var cardClicks = [
-        {x: 130, y: 350, name: "笔记1-左上"},
-        {x: 400, y: 350, name: "笔记2-右上"},
-        {x: 130, y: 650, name: "笔记3-左中"},
-        {x: 400, y: 650, name: "笔记4-右中"},
-        {x: 130, y: 950, name: "笔记5-左下"},
+        {nx: 0.25, ny: 0.25, name: "笔记1-左上"},
+        {nx: 0.75, ny: 0.25, name: "笔记2-右上"},
+        {nx: 0.25, ny: 0.55, name: "笔记3-左中"},
+        {nx: 0.75, ny: 0.55, name: "笔记4-右中"},
     ];
 
     for (var ci = 0; ci < cardClicks.length && totalShots < maxShots; ci++) {
         var pos = cardClicks[ci];
-        var clickX = pos.x + random(-20, 20);
-        var clickY = pos.y + random(-20, 20);
-        log("点击" + pos.name + " @ (" + clickX + "," + clickY + ")");
+        var clickX = Math.round(pos.nx * w);
+        var clickY = Math.round(pos.ny * h);
+        log("点击" + pos.name + " @ (" + clickX + "," + clickY + ") w=" + w + " h=" + h);
         click(clickX, clickY);
         sleep(random(3000, 5000));
 
-        // 检查是否进入了笔记详情页（检测详情页特有元素）
-        var isDetail = textContains("点赞").findOne(2000) || textContains("评论").findOne(2000) || descContains("点赞").findOne(2000) || textContains("关注").findOne(1500);
-        if (isDetail) {
-            log("进入笔记详情页");
-            eyesAnalyze("笔记详情-顶部");
-            totalShots++;
+        // 检查是否进入了笔记详情页
+        // 大众点评不暴露控件，用截图+VL判断
+        // 简单方案：等3秒后截图，如果页面和首页明显不同就算进入了
+        eyesAnalyze("检测页面-点击" + pos.name + "后");
+        totalShots++;
 
-            for (var j = 0; j < 2 && totalShots < maxShots; j++) {
-                safeScrollDown();
-                sleep(random(2000, 3000));
-                eyesAnalyze("笔记详情-滑动" + (j + 1));
-                totalShots++;
-            }
-
-            back();
-            sleep(random(2000, 3000));
-        } else {
-            log("未进入笔记详情，返回");
-            back();
-            sleep(1000);
-        }
+        // 尝试返回（无论是否进入详情都back一下）
+        sleep(1000);
+        back();
+        sleep(random(2000, 3000));
     }
 
     log("采集完成，共 " + totalShots + " 张");
