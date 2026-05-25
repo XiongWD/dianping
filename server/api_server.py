@@ -12,6 +12,7 @@ from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 from content_pack import get_pending_packs, update_pack_status, batch_generate
+from page_analyzer import build_page_map, get_analysis_summary
 
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_DIR = BASE_DIR / "logs"
@@ -49,6 +50,20 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
                 "generated": len(pack_ids),
                 "pack_ids": pack_ids
             })
+
+        elif parsed.path == "/api/explore_done":
+            # 探索完成，触发分析
+            result = build_page_map()
+            self._json_response({
+                "ok": True,
+                "pages_found": len(result.get("pages", [])) if result else 0,
+                "total_frames": result.get("total_frames", 0) if result else 0,
+            })
+
+        elif parsed.path == "/api/page_map":
+            # 查看页面地图分析结果
+            data = get_analysis_summary()
+            self._json_response(data)
 
         elif parsed.path.startswith("/api/screenshots/"):
             # 查看截图
