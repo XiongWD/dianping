@@ -87,6 +87,10 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/eyes":
             # 接收手机截图 + 控件dump
             self._handle_eyes()
+
+        elif parsed.path == "/api/explore":
+            # 探索模式数据接收
+            self._handle_explore()
         else:
             self._json_response({"error": "unknown endpoint"}, 404)
 
@@ -154,6 +158,60 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             "screenshot_url": screenshot_url,
             "description": desc,
         })
+
+    def _handle_explore(self):
+        """处理探索模式数据"""
+        content_type = self.headers.get("Content-Type", "")
+        content_length = int(self.headers.get("Content-Length", 0))
+
+        if "multipart/form-data" not in content_type:
+            body = self.rfile.read(content_length)
+            data = json.loads(body)
+            self._json_response({"ok": True, "msg": "json only"})
+            return
+
+        form = cgi.FieldStorage(
+            fp=self.rfile, headers=self.headers,
+            environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type}
+        )
+
+        action = form.getvalue("action", "unknown")
+        activity = form.getvalue("activity", "")
+        ui_json = form.getvalue("ui_json", "[]")
+        ts = form.getvalue("ts", "0")
+
+        # 保存截图
+        filename = f"explore_{ts}_{uuid.uuid4().hex[:4]}.png"
+        filepath = SCREENSHOT_DIR / filename
+        file_item = form["screen"] if "screen" in form else None
+        if file_item and hasattr(file_item, 'file'):
+            with open(filepath, "wb") as f:
+                f.write(file_item.file.read())
+
+        # 解析节点
+        nodes = []
+        try:
+            nodes = json.loads(ui_json)
+        except:
+            pass
+
+        # 记录到探索日志
+        explore_log = LOG_DIR / "explore_log.jsonl"
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "ts": ts,
+            "action": action,
+            "activity": activity,
+            "screenshot": filename,
+            "node_count": len(nodes),
+            "nodes": nodes[:50],  # 只保存前50个关键节点
+        }
+        with open(explore_log, "a") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+        print(f"[explore] {action} | {activity} | {len(nodes)} nodes | {filename}")
+
+        self._json_response({"ok": True, "frame": filename})
 
     def _json_response(self, data, status=200):
         self.send_response(status)
