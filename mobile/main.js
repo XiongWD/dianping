@@ -4,11 +4,28 @@
  */
 
 // ============ 无障碍服务（必须在最顶层） ============
-try {
-    auto.waitFor(10000);
+if (!auto.service) {
+    log("无障碍服务未开启，跳转设置...");
+    toast("请开启无障碍服务后返回脚本");
+    app.startActivity({
+        action: "android.settings.ACCESSIBILITY_SETTINGS"
+    });
+    // 等待用户开启，最多60秒
+    var waited = 0;
+    while (!auto.service && waited < 60000) {
+        sleep(1000);
+        waited += 1000;
+    }
+    if (!auto.service) {
+        toast("无障碍服务未开启，脚本退出");
+        exit();
+    }
+    log("无障碍服务已开启");
+    // 回到 AutoJs6
+    back();
+    sleep(1000);
+} else {
     log("无障碍服务: OK");
-} catch (e) {
-    log("无障碍服务启动失败: " + e);
 }
 
 // ============ 截图权限（必须在最顶层请求） ============
