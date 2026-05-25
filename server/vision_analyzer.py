@@ -162,7 +162,8 @@ def analyze_for_yolo(screenshot_path, nodes_info=None):
                 "Content-Type": "application/json"
             },
             json=data,
-            timeout=60
+            timeout=120,
+            proxies={"http": None, "https": None}
         )
         if resp.status_code == 200:
             content = resp.json()["choices"][0]["message"]["content"]
