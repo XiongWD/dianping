@@ -1,83 +1,245 @@
 /**
- * 大众点评 — 自动探索模式
- * 自动打开APP → 截图+dump节点 → 滑动/点击 → 持续回传服务器
- * 服务器端积累数据后自动分析界面结构
+ * 大众点评 — 自动探索模式 v2
+ * 
+ * 策略：
+ * - 深度优先探索，最大深度 4
+ * - 用 activity + 关键节点 hash 做 visited 检测，同一页面不重复进入
+ * - 每个页面最多滑 3 次后开始点子元素
+ * - 总帧数上限 200，超时 5 分钟自动停
+ * - back 操作时深度递减
  */
 
 var CONFIG = {
     apiBase: "http://192.168.0.107:8090",
     dianpingPackage: "com.dianping.v1",
-    exploreDuration: 300,       // 探索总时长（秒）
-    screenshotInterval: 3,      // 每隔几秒截一次图
-    tapProbability: 0.15,       // 每次滑动后点击概率
-    swipeInterval: [2000, 5000], // 滑动间隔（毫秒）
+    maxDepth: 4,            // 最大探索深度
+    maxFrames: 200,         // 总截图上限
+    maxTimeSec: 300,        // 总时长上限（秒）
+    maxSwipesPerPage: 3,    // 每页最多滑几次
+    swipeInterval: [2000, 4000],
 };
 
-// ============ 截图+节点上传 ============
-function sendFrame(action) {
-    try {
-        // dump 控件节点
-        var uiNodes = [];
-        var root = auto.root;
-        if (root) {
-            function walk(node, depth) {
-                if (!node || depth > 12 || uiNodes.length > 200) return;
-                var t = node.text() || "";
-                var d = node.desc() || "";
-                if (t || d || node.clickable() || node.scrollable()) {
-                    var b = node.bounds();
-                    uiNodes.push({
-                        t: t,
-                        d: d,
-                        c: node.clickable(),
-                        s: node.scrollable(),
-                        b: b ? (b.left + "," + b.top + "," + b.right + "," + b.bottom) : "",
-                        cls: (node.className() || "").split(".").pop(),
-                    });
-                }
-                for (var i = 0; i < node.childCount(); i++) {
-                    walk(node.child(i), depth + 1);
-                }
-            }
-            walk(root, 0);
-        }
+// ============ 状态 ============
+var visitedPages = {};      // pageHash → true
+var depth = 0;
+var frameCount = 0;
+var startTime = Date.now();
 
-        // 截图
-        var tmpPath = "/sdcard/dp_explore_" + Date.now() + ".png";
+// ============ 工具函数 ============
+
+function pageHash() {
+    /** 用 activity + 可见文本的 hash 标识一个页面 */
+    var act = "";
+    try { act = currentActivity() || ""; } catch(e) {}
+    
+    var root = auto.root;
+    var texts = [];
+    if (root) {
+        function collect(node, d) {
+            if (!node || d > 8 || texts.length > 30) return;
+            var t = node.text() || "";
+            var desc = node.desc() || "";
+            if (t && t.length < 30) texts.push(t);
+            if (desc && desc.length < 30) texts.push(desc);
+            for (var i = 0; i < node.childCount(); i++) {
+                collect(node.child(i), d + 1);
+            }
+        }
+        collect(root, 0);
+    }
+    // 简单 hash
+    var s = act + "|" + texts.slice(0, 20).join(",");
+    var h = 0;
+    for (var i = 0; i < s.length; i++) {
+        h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+    }
+    return act + "_" + Math.abs(h);
+}
+
+function dumpNodes() {
+    var nodes = [];
+    var root = auto.root;
+    if (!root) return nodes;
+    function walk(node, d) {
+        if (!node || d > 10 || nodes.length > 150) return;
+        var t = node.text() || "";
+        var dsc = node.desc() || "";
+        if (t || dsc || node.clickable() || node.scrollable()) {
+            var b = node.bounds();
+            nodes.push({
+                t: t,
+                d: dsc,
+                c: node.clickable(),
+                s: node.scrollable(),
+                b: b ? (b.left + "," + b.top + "," + b.right + "," + b.bottom) : "",
+                cls: (node.className() || "").split(".").pop(),
+            });
+        }
+        for (var i = 0; i < node.childCount(); i++) {
+            walk(node.child(i), d + 1);
+        }
+    }
+    walk(root, 0);
+    return nodes;
+}
+
+function sendFrame(action) {
+    if (frameCount >= CONFIG.maxFrames) return null;
+    if (Date.now() - startTime > CONFIG.maxTimeSec * 1000) return null;
+
+    try {
+        var nodes = dumpNodes();
+        var tmpPath = "/sdcard/dp_ex_" + Date.now() + ".png";
         var img = captureScreen();
         if (img) {
             images.save(img, tmpPath, "png");
             img.recycle();
         }
 
-        // 当前 activity
-        var activity = "";
-        try { activity = currentActivity() || ""; } catch(e) {}
+        var act = "";
+        try { act = currentActivity() || ""; } catch(e) {}
 
         var res = http.postMultipart(CONFIG.apiBase + "/api/explore", {
-            action: action || "auto",
-            activity: activity,
-            ui_json: JSON.stringify(uiNodes),
+            action: action,
+            activity: act,
+            ui_json: JSON.stringify(nodes),
+            depth: depth.toString(),
             ts: Date.now().toString(),
-        }, (img ? { files: { screen: open(tmpPath) } } : {}));
+        }, img ? { files: { screen: open(tmpPath) } } : {});
 
         if (tmpPath && files.exists(tmpPath)) files.remove(tmpPath);
+        frameCount++;
         return res.body.json();
     } catch (e) {
-        log("sendFrame err: " + e);
+        log("sendFrame: " + e);
         return null;
     }
 }
 
-// ============ 主探索流程 ============
-function startExplore() {
-    log("=== 探索模式启动 ===");
-    log("将自动截图、滑动、点击，数据回传服务器");
+// ============ 探索逻辑 ============
 
-    // 请求截图权限
-    if (!requestScreenCapture(false)) {
-        // 有些版本 requestScreenCapture 是异步的
+function getClickableItems() {
+    /** 获取当前页面可点击的元素（排除已知的系统按钮） */
+    var items = [];
+    var root = auto.root;
+    if (!root) return items;
+
+    function collect(node, d) {
+        if (!node || d > 10 || items.length > 50) return;
+        if (node.clickable()) {
+            var t = node.text() || "";
+            var dsc = node.desc() || "";
+            // 排除系统按钮、导航栏等
+            var skip = false;
+            if (t === "" && dsc === "") skip = true;
+            if (dsc === "返回" || dsc === "更多") skip = true;
+            if (t === "确定" || t === "取消") skip = true;
+            
+            if (!skip) {
+                var b = node.bounds();
+                items.push({
+                    text: t,
+                    desc: dsc,
+                    bounds: b,
+                    x: b ? (b.left + b.right) / 2 : 0,
+                    y: b ? (b.top + b.bottom) / 2 : 0,
+                });
+            }
+        }
+        for (var i = 0; i < node.childCount(); i++) {
+            collect(node.child(i), d + 1);
+        }
     }
+    collect(root, 0);
+    return items;
+}
+
+function explorePage() {
+    /** 探索当前页面：截图 → 滑几次 → 点进子页面 */
+    
+    // 检查终止条件
+    if (frameCount >= CONFIG.maxFrames) {
+        log("达到帧上限 " + CONFIG.maxFrames);
+        return;
+    }
+    if (Date.now() - startTime > CONFIG.maxTimeSec * 1000) {
+        log("达到时间上限");
+        return;
+    }
+    if (depth > CONFIG.maxDepth) {
+        log("达到深度上限，返回");
+        back();
+        sleep(1000);
+        depth--;
+        return;
+    }
+
+    // 检测是否已访问
+    var hash = pageHash();
+    if (visitedPages[hash]) {
+        log("页面已访问过: " + hash);
+        return;
+    }
+    visitedPages[hash] = true;
+
+    // 截图 + dump
+    sendFrame("enter");
+    log("[depth=" + depth + "] 新页面: " + hash);
+
+    // 滑几次看更多内容
+    var swipeCount = random(1, CONFIG.maxSwipesPerPage);
+    for (var s = 0; s < swipeCount; s++) {
+        var sx = random(150, 400);
+        var sy = random(1000, 1500);
+        var ey = sy - random(200, 500);
+        swipe(sx, sy, sx, ey, random(200, 600));
+        sleep(random(CONFIG.swipeInterval[0], CONFIG.swipeInterval[1]));
+    }
+
+    // 滑动后再截一帧
+    sendFrame("after_swipe");
+
+    // 获取可点击元素
+    var items = getClickableItems();
+    if (items.length === 0) {
+        log("没有可点击元素");
+        return;
+    }
+
+    // 随机选 1-2 个可点击元素进入
+    var toExplore = Math.min(items.length, random(1, 2));
+    // 随机打乱
+    items.sort(function() { return Math.random() - 0.5; });
+
+    for (var i = 0; i < toExplore; i++) {
+        if (frameCount >= CONFIG.maxFrames) break;
+        if (depth >= CONFIG.maxDepth) break;
+
+        var item = items[i];
+        log("点击: " + (item.text || item.desc) + " @ (" + item.x + "," + item.y + ")");
+        
+        click(item.x, item.y);
+        sleep(random(2000, 4000));
+
+        // 检查页面是否变了
+        var newHash = pageHash();
+        if (newHash !== hash) {
+            // 进入了新页面，深度+1，递归探索
+            depth++;
+            explorePage();  // 递归
+        } else {
+            log("点击后页面没变，跳过");
+        }
+    }
+}
+
+// ============ 主函数 ============
+function startExplore() {
+    log("=== 探索模式 v2 启动 ===");
+    log("最大深度: " + CONFIG.maxDepth + " | 帧上限: " + CONFIG.maxFrames + " | 时长上限: " + CONFIG.maxTimeSec + "s");
+
+    // 截图权限
+    requestScreenCapture(false);
     sleep(500);
 
     // 启动大众点评
@@ -85,67 +247,20 @@ function startExplore() {
     app.launch(CONFIG.dianpingPackage);
     sleep(5000);
 
-    // 先截第一帧
-    sendFrame("launch");
-    log("首帧已上传");
+    // 开始递归探索
+    depth = 0;
+    explorePage();
 
-    var startTime = Date.now();
-    var endTime = startTime + CONFIG.exploreDuration * 1000;
-    var frameCount = 1;
-    var lastScreenshot = startTime;
+    // 探索结束，回到首页再截一张
+    log("=== 探索完成 ===");
+    log("总帧数: " + frameCount);
+    log("访问页面数: " + Object.keys(visitedPages).length);
+    log("总时长: " + Math.round((Date.now() - startTime) / 1000) + "s");
 
-    while (Date.now() < endTime) {
-        var now = Date.now();
-
-        // 每隔 screenshotInterval 秒截一次
-        if (now - lastScreenshot >= CONFIG.screenshotInterval * 1000) {
-            sendFrame("auto");
-            frameCount++;
-            lastScreenshot = now;
-
-            if (frameCount % 10 === 0) {
-                log("已采集 " + frameCount + " 帧");
-            }
-        }
-
-        // 随机操作
-        var op = Math.random();
-
-        if (op < 0.6) {
-            // 滑动
-            var sx = random(150, 400);
-            var sy = random(1000, 1500);
-            var ey = sy - random(200, 500);
-            swipe(sx, sy, sx, ey, random(200, 600));
-        } else if (op < 0.7) {
-            // 上滑（看更多内容）
-            var sx2 = random(150, 400);
-            var sy2 = random(400, 600);
-            var ey2 = sy2 + random(200, 500);
-            swipe(sx2, sy2, sx2, ey2, random(200, 600));
-        } else if (op < 0.7 + CONFIG.tapProbability) {
-            // 随机点击屏幕中间区域
-            var tx = random(100, 350);
-            var ty = random(300, 1200);
-            click(tx, ty);
-            log("点击 (" + tx + "," + ty + ")");
-            sleep(random(2000, 4000));
-            // 点进去后也截图
-            sendFrame("tap");
-        } else if (op < 0.92) {
-            // back
-            back();
-            sleep(1000);
-        } else {
-            // 停留
-            sleep(random(1000, 3000));
-        }
-
-        sleep(random(CONFIG.swipeInterval[0], CONFIG.swipeInterval[1]));
-    }
-
-    log("=== 探索完成，共 " + frameCount + " 帧 ===");
+    // 服务器端可以通过 /api/explore_summary 查看汇总
+    try {
+        http.get(CONFIG.apiBase + "/api/explore_done?frames=" + frameCount + "&pages=" + Object.keys(visitedPages).length);
+    } catch(e) {}
 }
 
-// ============ 入口 ============
 startExplore();
