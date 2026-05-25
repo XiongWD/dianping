@@ -220,27 +220,10 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             except:
                 pass
 
-            # VL 视觉分析（后台执行，异步）
-            if screenshot_file and not is_dup:
-                try:
-                    import threading
-                    def _vl_task(_filepath, _filename):
-                        try:
-                            from collect_db import mark_annotating, update_vl_result
-                            from vision_analyzer import analyze_for_yolo
-                            mark_annotating(_filename)
-                            vl_result = analyze_for_yolo(str(_filepath))
-                            page_type = vl_result.get("page_type", "unknown")
-                            main_content = vl_result.get("main_content", "")[:200]
-                            elem_count = len(vl_result.get("elements", []))
-                            update_vl_result(_filename, vl_result)
-                            print(f"[eyes] VL完成: {page_type} | {elem_count}元素 | {main_content}", flush=True)
-                        except Exception as e:
-                            print(f"[eyes] VL失败: {e}", flush=True)
-                            import traceback; traceback.print_exc(flush=True)
-                    threading.Thread(target=_vl_task, args=(filepath, screenshot_file), daemon=True).start()
-                except Exception as e:
-                    print(f"[eyes] VL启动失败: {e}")
+            # VL 视觉分析（暂时关闭，采集调试阶段不需要）
+            # if screenshot_file and not is_dup:
+            #     ... VL 标注逻辑保留，等采集稳定后单独开启 ...
+            pass
 
             # 返回采集统计
             from collect_db import get_stats
