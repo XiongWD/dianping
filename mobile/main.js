@@ -352,53 +352,51 @@ function collectRun() {
         totalShots++;
     }
 
-    // ===== 点击进商家详情 =====
-    log("--- 商家详情采集 ---");
+    // ===== 点击进笔记详情 =====
+    log("--- 笔记详情采集 ---");
     // 回到顶部
     safeSwipe(300, 500, 300, 1500, 300);
     sleep(1500);
 
-    // 用坐标点击：首页商家卡片位置大致在 y=350~1200 范围
-    // 每个卡片大约占 250-350px 高度，点击卡片中间区域
-    var cardPositions = [
-        {y: 450, name: "商家1"},   // 第1个卡片
-        {y: 780, name: "商家2"},   // 第2个卡片
-        {y: 1100, name: "商家3"},  // 第3个卡片
+    // 大众点评首页是双列瀑布流布局
+    // 左列 x=10~260, 右列 x=280~530
+    // 每行卡片约 250-300px 高
+    // 顶部搜索栏 ~150px, 底部导航 ~100px
+    var cardClicks = [
+        {x: 130, y: 350, name: "笔记1-左上"},
+        {x: 400, y: 350, name: "笔记2-右上"},
+        {x: 130, y: 650, name: "笔记3-左中"},
+        {x: 400, y: 650, name: "笔记4-右中"},
+        {x: 130, y: 950, name: "笔记5-左下"},
     ];
 
-    for (var ci = 0; ci < cardPositions.length && totalShots < maxShots; ci++) {
-        var pos = cardPositions[ci];
-        var clickX = random(200, 400);  // 卡片中间偏左（图片区域）
-        var clickY = pos.y + random(-30, 30);
+    for (var ci = 0; ci < cardClicks.length && totalShots < maxShots; ci++) {
+        var pos = cardClicks[ci];
+        var clickX = pos.x + random(-20, 20);
+        var clickY = pos.y + random(-20, 20);
         log("点击" + pos.name + " @ (" + clickX + "," + clickY + ")");
         click(clickX, clickY);
         sleep(random(3000, 5000));
 
-        // 检查是否进入了商家详情页
-        var isDetail = textContains("地址").findOne(2000) || textContains("人均").findOne(2000) || textContains("营业").findOne(2000) || textContains("评分").findOne(2000);
+        // 检查是否进入了笔记详情页（检测详情页特有元素）
+        var isDetail = textContains("点赞").findOne(2000) || textContains("评论").findOne(2000) || descContains("点赞").findOne(2000) || textContains("关注").findOne(1500);
         if (isDetail) {
-            log("进入商家详情页");
-            eyesAnalyze("商家详情-顶部");
+            log("进入笔记详情页");
+            eyesAnalyze("笔记详情-顶部");
             totalShots++;
 
             for (var j = 0; j < 2 && totalShots < maxShots; j++) {
                 safeScrollDown();
                 sleep(random(2000, 3000));
-                eyesAnalyze("商家详情-滑动" + (j + 1));
+                eyesAnalyze("笔记详情-滑动" + (j + 1));
                 totalShots++;
             }
 
             back();
             sleep(random(2000, 3000));
         } else {
-            log("未进入商家详情，返回");
+            log("未进入笔记详情，返回");
             back();
-            sleep(1000);
-        }
-
-        // 如果还有下一个商家，先滑动露出
-        if (ci < cardPositions.length - 1) {
-            safeSwipe(300, pos.y + 200, 300, pos.y - 100, 400);
             sleep(1000);
         }
     }
