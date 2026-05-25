@@ -64,13 +64,13 @@ def _init_db(conn):
 
 def record_screenshot(filename, description="", node_count=0, ui_tree="[]",
                       img_hash="", file_size=0, width=0, height=0):
-    """记录一张截图，返回记录 id。如果 hash 重复则跳过。"""
+    """记录一张截图。按 description 去重，同一页面位置只采一次。"""
     db = get_db()
-    # 检查重复
-    if img_hash:
-        dup = db.execute("SELECT id FROM screenshots WHERE img_hash=?", (img_hash,)).fetchone()
+    # 按 description 去重（首页-初始、商家详情-滑动1 等）
+    if description:
+        dup = db.execute("SELECT id FROM screenshots WHERE description=?", (description,)).fetchone()
         if dup:
-            return dup["id"], True  # 重复
+            return dup["id"], True
     try:
         cur = db.execute(
             """INSERT OR IGNORE INTO screenshots
