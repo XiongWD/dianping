@@ -3,6 +3,14 @@
  * 截图+节点 → base64 JSON上传，不用 multipart
  */
 
+// ============ 无障碍服务（必须在最顶层） ============
+try {
+    auto.waitFor(10000);
+    log("无障碍服务: OK");
+} catch (e) {
+    log("无障碍服务启动失败: " + e);
+}
+
 // ============ 截图权限（必须在最顶层请求） ============
 var screenCaptureReady = false;
 try {
@@ -26,6 +34,28 @@ var CONFIG = {
         upload: 30000,
     },
 };
+
+// ============ 安全滑动（无障碍挂了用 gesture 兜底） ============
+function safeSwipe(x1, y1, x2, y2, duration) {
+    try {
+        swipe(x1, y1, x2, y2, duration);
+    } catch (e) {
+        log("swipe失败，用gesture兜底");
+        try {
+            gesture(duration, [x1, y1], [x2, y2]);
+        } catch (e2) {
+            log("gesture也失败: " + e2);
+        }
+    }
+}
+
+function safeScrollDown() {
+    try {
+        scrollDown();
+    } catch (e) {
+        safeSwipe(300, 1200, 300, 500, 500);
+    }
+}
 
 // ============ dump控件 ============
 function dumpUI() {
@@ -279,19 +309,6 @@ function collectRun() {
     log("采集模式启动");
     toast("数据采集模式：自动浏览+截图");
 
-    // 检查无障碍服务
-    if (!auto.service) {
-        log("无障碍服务未运行，尝试启用...");
-        try {
-            auto.waitFor(5000);
-        } catch (e) {
-            log("无障碍服务启用失败: " + e);
-            toast("请手动开启无障碍服务后重试");
-            return;
-        }
-    }
-    log("无障碍服务: OK");
-
     // 确保在大众点评
     var currentPkg = currentPackage();
     if (currentPkg !== CONFIG.dianpingPackage) {
@@ -312,7 +329,7 @@ function collectRun() {
     for (var i = 0; i < 3 && totalShots < maxShots; i++) {
         var sx = random(200, 400);
         var sy = random(1200, 1600);
-        swipe(sx, sy, sx, sy - random(400, 700), random(400, 800));
+        safeSwipe(sx, sy, sx, sy - random(400, 700), random(400, 800));
         sleep(random(2000, 4000));
         eyesAnalyze("首页-滑动" + (i + 1));
         totalShots++;
@@ -321,7 +338,7 @@ function collectRun() {
     // ===== 点击进商家详情 =====
     log("--- 商家详情采集 ---");
     // 回到顶部
-    swipe(300, 500, 300, 1500, 300);
+    safeSwipe(300, 500, 300, 1500, 300);
     sleep(1000);
 
     // 尝试点击前3个商家
@@ -348,9 +365,9 @@ function collectRun() {
 
             // 向下滑动2次
             for (var j = 0; j < 2 && totalShots < maxShots; j++) {
-                scrollDown();
+                safeScrollDown();
                 sleep(random(2000, 3000));
-                eyesAnalyze("商家详情-滑动" + (j + 1));
+                eyesAnalyze("商家详情-滑动"" + (j + 1));
                 totalShots++;
             }
 
@@ -364,7 +381,7 @@ function collectRun() {
         }
 
         // 滑动到下一个卡片
-        swipe(300, 1200, 300, 600, 500);
+        safeSwipe(300, 1200, 300, 600, 500);
         sleep(1000);
     }
 
