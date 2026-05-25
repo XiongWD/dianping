@@ -106,8 +106,7 @@ function eyesAnalyze(desc) {
             screenshot_b64: imgB64,
         };
 
-        var res = http.post(CONFIG.apiBase + "/api/eyes", JSON.stringify(payload), {
-            contentType: "application/json",
+        var res = http.post(CONFIG.apiBase + "/api/eyes", payload, {
             timeout: 30000,
         });
 

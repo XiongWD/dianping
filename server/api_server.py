@@ -135,8 +135,12 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
         body = self.rfile.read(content_length)
 
         # JSON 模式（base64 截图）
-        if "application/json" in content_type:
-            data = json.loads(body)
+        if "application/json" in content_type or content_type.startswith("text/") or not content_type:
+            raw = json.loads(body)
+            # AutoJs6 可能传了双重 JSON 字符串
+            if isinstance(raw, str):
+                raw = json.loads(raw)
+            data = raw if isinstance(raw, dict) else {}
             desc = data.get("description", "unknown")
             ui_tree = data.get("ui_tree", "[]")
             screenshot_b64 = data.get("screenshot_b64", "")
