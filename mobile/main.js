@@ -279,6 +279,19 @@ function collectRun() {
     log("采集模式启动");
     toast("数据采集模式：自动浏览+截图");
 
+    // 检查无障碍服务
+    if (!auto.service) {
+        log("无障碍服务未运行，尝试启用...");
+        try {
+            auto.waitFor(5000);
+        } catch (e) {
+            log("无障碍服务启用失败: " + e);
+            toast("请手动开启无障碍服务后重试");
+            return;
+        }
+    }
+    log("无障碍服务: OK");
+
     // 确保在大众点评
     var currentPkg = currentPackage();
     if (currentPkg !== CONFIG.dianpingPackage) {
