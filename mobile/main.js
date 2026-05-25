@@ -356,32 +356,31 @@ function collectRun() {
     log("--- 商家详情采集 ---");
     // 回到顶部
     safeSwipe(300, 500, 300, 1500, 300);
-    sleep(1000);
+    sleep(1500);
 
-    // 尝试点击前3个商家
-    for (var shopIdx = 0; shopIdx < 3 && totalShots < maxShots; shopIdx++) {
-        // 优先找图文卡片（通常有图片+文字，可点击进入商家）
-        var card = idContains("item").clickable(true).findOne(2000)
-            || className("android.widget.RelativeLayout").clickable(true).boundsInside(0, 200, device.width, device.height).findOne(2000)
-            || className("android.view.View").clickable(true).boundsInside(0, 200, device.width, device.height).findOne(2000);
-        if (!card) {
-            log("未找到可点击的商家卡片");
-            break;
-        }
+    // 用坐标点击：首页商家卡片位置大致在 y=350~1200 范围
+    // 每个卡片大约占 250-350px 高度，点击卡片中间区域
+    var cardPositions = [
+        {y: 450, name: "商家1"},   // 第1个卡片
+        {y: 780, name: "商家2"},   // 第2个卡片
+        {y: 1100, name: "商家3"},  // 第3个卡片
+    ];
 
-        log("点击商家卡片");
-        card.click();
+    for (var ci = 0; ci < cardPositions.length && totalShots < maxShots; ci++) {
+        var pos = cardPositions[ci];
+        var clickX = random(200, 400);  // 卡片中间偏左（图片区域）
+        var clickY = pos.y + random(-30, 30);
+        log("点击" + pos.name + " @ (" + clickX + "," + clickY + ")");
+        click(clickX, clickY);
         sleep(random(3000, 5000));
 
         // 检查是否进入了商家详情页
-        var isDetail = textContains("地址").findOne(2000) || textContains("人均").findOne(2000) || textContains("营业").findOne(2000);
+        var isDetail = textContains("地址").findOne(2000) || textContains("人均").findOne(2000) || textContains("营业").findOne(2000) || textContains("评分").findOne(2000);
         if (isDetail) {
             log("进入商家详情页");
-            // 商家详情页截图
             eyesAnalyze("商家详情-顶部");
             totalShots++;
 
-            // 向下滑动2次
             for (var j = 0; j < 2 && totalShots < maxShots; j++) {
                 safeScrollDown();
                 sleep(random(2000, 3000));
@@ -389,7 +388,6 @@ function collectRun() {
                 totalShots++;
             }
 
-            // 返回首页
             back();
             sleep(random(2000, 3000));
         } else {
@@ -398,9 +396,11 @@ function collectRun() {
             sleep(1000);
         }
 
-        // 滑动到下一个卡片
-        safeSwipe(300, 1200, 300, 600, 500);
-        sleep(1000);
+        // 如果还有下一个商家，先滑动露出
+        if (ci < cardPositions.length - 1) {
+            safeSwipe(300, pos.y + 200, 300, pos.y - 100, 400);
+            sleep(1000);
+        }
     }
 
     log("采集完成，共 " + totalShots + " 张");
