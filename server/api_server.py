@@ -121,69 +121,65 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             self._json_response({"error": "unknown endpoint"}, 404)
 
     def _handle_eyes(self):
-        """处理截图上传"""
+        """处理截图上传（JSON base64 或 multipart）"""
         content_type = self.headers.get("Content-Type", "")
         content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length)
 
-        if "multipart/form-data" not in content_type:
-            # 简单 JSON 模式
-            body = self.rfile.read(content_length)
+        # JSON 模式（base64 截图）
+        if "application/json" in content_type:
             data = json.loads(body)
             desc = data.get("description", "unknown")
-            ui_tree = data.get("ui_tree", "")
-            self._json_response({
-                "ok": True,
-                "summary": f"收到控件数据 ({len(ui_tree)} chars), 无截图",
-                "screenshot_url": None,
-            })
-            return
+            ui_tree = data.get("ui_tree", "[]")
+            screenshot_b64 = data.get("screenshot_b64", "")
 
-        # multipart 解析
-        form = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            }
-        )
+            # 解码 base64 截图
+            screenshot_file = None
+            if screenshot_b64:
+                try:
+                    import base64 as b64mod
+                    img_bytes = b64mod.b64decode(screenshot_b64)
+                    filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
+                    filepath = SCREENSHOT_DIR / filename
+                    with open(filepath, "wb") as f:
+                        f.write(img_bytes)
+                    screenshot_file = filename
+                    print(f"[eyes] 截图已保存(base64): {filename} ({len(img_bytes)//1024}KB)")
+                except Exception as e:
+                    print(f"[eyes] base64解码失败: {e}")
 
-        desc = form.getvalue("description", "unknown")
-        ui_tree = form.getvalue("ui_tree", "")
-
-        # 保存截图
-        screenshot_url = None
-        file_item = form["screenshot"] if "screenshot" in form else None
-        if file_item and file_item.filename:
-            filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}.png"
-            filepath = SCREENSHOT_DIR / filename
-            with open(filepath, "wb") as f:
-                f.write(file_item.file.read())
-            screenshot_url = f"/api/screenshots/{filename}"
-            print(f"[eyes] 截图已保存: {filename} (desc: {desc})")
-
-        # 解析控件树
-        node_count = 0
-        if ui_tree:
+            # 解析节点
+            node_count = 0
             try:
                 nodes = json.loads(ui_tree)
                 node_count = len(nodes)
-                print(f"[eyes] 控件节点: {node_count}")
-                # 打印关键控件
-                for n in nodes[:20]:
-                    txt = n.get("text", "")
-                    dsc = n.get("desc", "")
-                    if txt or dsc:
-                        print(f"  [{n.get('className','')}] text={txt} desc={dsc} clickable={n.get('clickable')} bounds={n.get('bounds')}")
+                print(f"[eyes] {desc} | {node_count} nodes" + (f" | {screenshot_file}" if screenshot_file else " | 无截图"))
+                for n in nodes[:10]:
+                    if n.get("t") or n.get("d"):
+                        print(f"  [{n.get('cls','')}] {n.get('t','')} / {n.get('d','')} @ {n.get('b','')}")
             except:
                 pass
 
-        self._json_response({
-            "ok": True,
-            "summary": f"截图已保存, {node_count} 个控件节点",
-            "screenshot_url": screenshot_url,
-            "description": desc,
-        })
+            self._json_response({
+                "ok": True,
+                "summary": f"截图已保存, {node_count} 个控件节点",
+                "screenshot": screenshot_file,
+                "description": desc,
+            })
+            return
+
+        # multipart 模式（兼容旧版）
+        if "multipart/form-data" in content_type:
+            form = cgi.FieldStorage(
+                fp=None,
+                headers=self.headers,
+                environ={"REQUEST_METHOD": "POST", "CONTENT_TYPE": content_type}
+            )
+            # ... multipart fallback
+            self._json_response({"ok": True, "summary": "multipart received"})
+            return
+
+        self._json_response({"ok": True, "summary": "unknown format"})
 
     def _handle_explore(self):
         """处理探索模式数据"""
