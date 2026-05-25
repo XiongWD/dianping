@@ -156,16 +156,17 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
                     with open(filepath, "wb") as f:
                         f.write(img_bytes)
                     screenshot_file = filename
-                    print(f"[eyes] 截图已保存(base64): {filename} ({len(img_bytes)//1024}KB)")
+                    import sys
+                    print(f"[eyes] 截图已保存(base64): {filename} ({len(img_bytes)//1024}KB)", flush=True)
                 except Exception as e:
-                    print(f"[eyes] base64解码失败: {e}")
+                    print(f"[eyes] base64解码失败: {e}", flush=True)
 
             # 解析节点
             node_count = 0
             try:
                 nodes = json.loads(ui_tree)
                 node_count = len(nodes)
-                print(f"[eyes] {desc} | {node_count} nodes" + (f" | {screenshot_file}" if screenshot_file else " | 无截图"))
+                print(f"[eyes] {desc} | {node_count} nodes", flush=True + (f" | {screenshot_file}" if screenshot_file else " | 无截图"))
                 for n in nodes[:10]:
                     if n.get("t") or n.get("d"):
                         print(f"  [{n.get('cls','')}] {n.get('t','')} / {n.get('d','')} @ {n.get('b','')}")
@@ -182,9 +183,9 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
                             vl_result = analyze_for_yolo(str(filepath))
                             page_type = vl_result.get("page_type", "unknown")
                             main_content = vl_result.get("main_content", "")[:200]
-                            print(f"[eyes] VL分析: {page_type} | {main_content}")
+                            print(f"[eyes] VL分析: {page_type} | {main_content}", flush=True)
                         except Exception as e:
-                            print(f"[eyes] VL分析失败: {e}")
+                            print(f"[eyes] VL分析失败: {e}", flush=True)
                     threading.Thread(target=_vl_task, daemon=True).start()
                 except Exception as e:
                     print(f"[eyes] VL启动失败: {e}")
