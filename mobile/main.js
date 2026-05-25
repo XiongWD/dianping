@@ -3,6 +3,15 @@
  * 含截图分析能力，截图+控件dump上传服务器
  */
 
+// ============ 截图权限（必须在最顶层请求） ============
+var screenCaptureReady = false;
+try {
+    screenCaptureReady = requestScreenCapture(false);
+    log("截图权限: " + screenCaptureReady);
+} catch (e) {
+    log("截图权限请求失败: " + e);
+}
+
 // ============ 配置 ============
 var CONFIG = {
     apiBase: "http://192.168.0.107:8090",
@@ -91,19 +100,27 @@ function eyesAnalyze(desc) {
         }
     }
 
-    var img = captureScreen();
+    var img = null;
     var tmpPath = "";
-    if (!img) {
-        log("eyes: 截图失败，请求截图权限");
-        requestScreenCapture(false);
-        sleep(2000);
-        img = captureScreen();
+    try {
+        if (screenCaptureReady) {
+            img = captureScreen();
+        }
+    } catch (e) {
+        log("eyes: captureScreen异常 - " + e);
     }
     if (img) {
         tmpPath = "/sdcard/dp_eyes_" + Date.now() + ".png";
-        images.save(img, tmpPath, "png");
-        img.recycle();
-        log("eyes: 截图已保存 " + tmpPath);
+        try {
+            images.save(img, tmpPath, "png");
+            img.recycle();
+            log("eyes: 截图已保存 " + tmpPath);
+        } catch (e) {
+            log("eyes: 保存截图失败 - " + e);
+            tmpPath = "";
+        }
+    } else {
+        log("eyes: 截图失败，只上传节点数据");
     }
 
     if (!tmpPath) {
