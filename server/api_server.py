@@ -134,7 +134,7 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        # 先尝试 JSON 解析（不管 Content-Type）
+        # 尝试 JSON 解析（不管 Content-Type）
         data = None
         try:
             raw = json.loads(body)
@@ -144,6 +144,22 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
                 data = raw
         except:
             pass
+
+        # 如果 JSON 解析失败，尝试 URL-encoded 解析
+        if data is None:
+            try:
+                from urllib.parse import parse_qs
+                parsed = parse_qs(body.decode("utf-8", errors="replace"))
+                data = {k: v[0] if len(v) == 1 else v for k, v in parsed.items()}
+                # 处理嵌套的 JSON 字符串字段
+                for key in ["ui_tree"]:
+                    if key in data and isinstance(data[key], str):
+                        try:
+                            data[key] = json.loads(data[key])
+                        except:
+                            pass
+            except:
+                pass
 
         if data is not None:
             desc = data.get("description", "unknown")

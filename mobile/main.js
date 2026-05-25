@@ -106,9 +106,7 @@ function eyesAnalyze(desc) {
             screenshot_b64: imgB64,
         };
 
-        var res = http.post(CONFIG.apiBase + "/api/eyes", payload, {
-            timeout: 30000,
-        });
+        var res = http.postJson(CONFIG.apiBase + "/api/eyes", payload);
 
         var data = res.body.json();
         log("eyes: " + (data.summary || JSON.stringify(data)));
