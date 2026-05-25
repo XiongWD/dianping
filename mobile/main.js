@@ -360,16 +360,17 @@ function collectRun() {
 
     // 尝试点击前3个商家
     for (var shopIdx = 0; shopIdx < 3 && totalShots < maxShots; shopIdx++) {
-        // 查找可点击的内容卡片（通常有图片+文字）
-        var card = className("android.widget.RelativeLayout").clickable(true).findOne(3000);
+        // 优先找图文卡片（通常有图片+文字，可点击进入商家）
+        var card = idContains("item").clickable(true).findOne(2000)
+            || className("android.widget.RelativeLayout").clickable(true).boundsInside(0, 200, device.width, device.height).findOne(2000)
+            || className("android.view.View").clickable(true).boundsInside(0, 200, device.width, device.height).findOne(2000);
         if (!card) {
             log("未找到可点击的商家卡片");
             break;
         }
 
-        var cardBounds = card.bounds();
-        log("点击商家卡片 @ " + cardBounds);
-        click(cardBounds.centerX(), cardBounds.centerY());
+        log("点击商家卡片");
+        card.click();
         sleep(random(3000, 5000));
 
         // 检查是否进入了商家详情页
