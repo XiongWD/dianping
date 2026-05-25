@@ -120,8 +120,11 @@ function eyesAnalyze(desc) {
 // ============ 养号浏览（改进版） ============
 function browseRun() {
     log("开始养号浏览...");
-    app.launch(CONFIG.dianpingPackage);
-    sleep(CONFIG.timeout.appLaunch);
+    var currentPkg = currentPackage();
+    if (currentPkg !== CONFIG.dianpingPackage) {
+        app.launch(CONFIG.dianpingPackage);
+        sleep(CONFIG.timeout.appLaunch);
+    }
 
     // 先截一张图看看界面结构
     eyesAnalyze("首页浏览");
@@ -342,13 +345,12 @@ else if (choice === 0) { browseRun(); }
 else if (choice === 1) { publishRun(); }
 else if (choice === 2) { runLoop(); }
 else if (choice === 3) {
-    // 单独截图分析模式
-    // 先检查大众点评是否在前台
+    // 截图分析模式：自动打开大众点评+截图上传
     var currentPkg = currentPackage();
     if (currentPkg !== CONFIG.dianpingPackage) {
-        toast("先打开大众点评APP，再运行截图分析");
-        log("当前前台APP: " + currentPkg + "，不是大众点评");
-    } else {
-        eyesAnalyze("手动截图分析");
+        log("当前不是大众点评，正在启动...");
+        app.launch(CONFIG.dianpingPackage);
+        sleep(CONFIG.timeout.appLaunch);
     }
+    eyesAnalyze("手动截图分析");
 }
