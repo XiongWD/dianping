@@ -93,26 +93,53 @@ function eyesAnalyze(desc) {
 
     var img = captureScreen();
     var tmpPath = "";
+    if (!img) {
+        log("eyes: 截图失败，请求截图权限");
+        requestScreenCapture(false);
+        sleep(2000);
+        img = captureScreen();
+    }
     if (img) {
-        tmpPath = "/sdcard/autojs_eyes_tmp.png";
+        tmpPath = "/sdcard/dp_eyes_" + Date.now() + ".png";
         images.save(img, tmpPath, "png");
         img.recycle();
+        log("eyes: 截图已保存 " + tmpPath);
     }
 
+    if (!tmpPath) {
+        log("eyes: 截图失败，只上传节点数据");
+        try {
+            var res = http.post(CONFIG.apiBase + "/api/eyes", JSON.stringify({
+                description: desc || "unknown",
+                ui_tree: JSON.stringify(uiSummary),
+                screen_time: new Date().toISOString(),
+            }), { contentType: "application/json" });
+            var data = res.body.json();
+            log("eyes: " + (data.summary || JSON.stringify(data)));
+            return data;
+        } catch (e2) {
+            log("eyes: 节点上传也失败 - " + e2);
+            return null;
+        }
+    }
+
+    log("eyes: 截图已保存，开始上传 (" + uiSummary.length + " 个节点)");
     try {
         var res = http.postMultipart(CONFIG.apiBase + "/api/eyes", {
             description: desc || "unknown",
             ui_tree: JSON.stringify(uiSummary),
             screen_time: new Date().toISOString(),
-        }, tmpPath ? { files: { screenshot: open(tmpPath) } } : {});
+        }, {
+            files: { screenshot: tmpPath }
+        });
 
         var data = res.body.json();
         log("eyes: " + (data.summary || JSON.stringify(data)));
-        if (tmpPath) files.remove(tmpPath);
+        files.remove(tmpPath);
         return data;
     } catch (e) {
         log("eyes: 上传失败 - " + e);
-        if (tmpPath) files.remove(tmpPath);
+        files.remove(tmpPath);
         return null;
     }
 }
