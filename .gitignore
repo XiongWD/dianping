@@ -7,3 +7,4 @@ output/packs/
 output/processed/
 output/raw_images/
 *.apk
+*.png

@@ -13,6 +13,7 @@ from urllib.parse import urlparse, parse_qs
 
 from content_pack import get_pending_packs, update_pack_status, batch_generate
 from page_analyzer import build_page_map, get_analysis_summary
+from vision_analyzer import batch_analyze_explore, get_analysis_summary as get_vision_analysis
 
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 LOG_DIR = BASE_DIR / "logs"
@@ -61,9 +62,19 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             })
 
         elif parsed.path == "/api/page_map":
-            # 查看页面地图分析结果
-            data = get_analysis_summary()
+            # 查看视觉分析结果
+            data = get_vision_analysis()
             self._json_response(data)
+
+        elif parsed.path == "/api/analyze":
+            # 手动触发视觉分析
+            params = parse_qs(parsed.query)
+            limit = int(params.get("limit", ["50"])[0])
+            result = batch_analyze_explore(limit=limit)
+            self._json_response({
+                "ok": True,
+                "pages_analyzed": result.get("total_analyzed", 0) if result else 0,
+            })
 
         elif parsed.path.startswith("/api/screenshots/"):
             # 查看截图
