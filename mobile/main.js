@@ -343,5 +343,12 @@ else if (choice === 1) { publishRun(); }
 else if (choice === 2) { runLoop(); }
 else if (choice === 3) {
     // 单独截图分析模式
-    eyesAnalyze("手动截图分析");
+    // 先检查大众点评是否在前台
+    var currentPkg = currentPackage();
+    if (currentPkg !== CONFIG.dianpingPackage) {
+        toast("先打开大众点评APP，再运行截图分析");
+        log("当前前台APP: " + currentPkg + "，不是大众点评");
+    } else {
+        eyesAnalyze("手动截图分析");
+    }
 }
