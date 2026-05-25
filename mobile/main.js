@@ -1,6 +1,6 @@
 /**
  * 大众点评自动脚本 — 单文件版 (AutoJs6)
- * 养号浏览 / 发布笔记 / 连续运行
+ * 含截图分析能力，截图+控件dump上传服务器
  */
 
 // ============ 配置 ============
@@ -8,8 +8,8 @@ var CONFIG = {
     apiBase: "http://192.168.0.107:8090",
     publishInterval: 30,
     maxPublishPerDay: 5,
-    browseDuration: [3, 5],
-    likePerSession: [2, 5],
+    browseDuration: [1, 3],        // 缩短到 1-3 分钟
+    likePerSession: [1, 3],
     dianpingPackage: "com.dianping.v1",
     timeout: {
         appLaunch: 10000,
@@ -18,14 +18,116 @@ var CONFIG = {
     },
 };
 
-// ============ 养号浏览 ============
+// ============ 眼睛模块（截图+控件上传） ============
+function eyesLook(desc) {
+    log("eyes: 截图中... (" + desc + ")");
+    try {
+        var img = captureScreen();
+        if (!img) {
+            requestScreenCapture(false);
+            sleep(1000);
+            img = captureScreen();
+        }
+        if (!img) {
+            log("eyes: 截图失败");
+            return null;
+        }
+
+        var tmpPath = "/sdcard/autojs_eyes_tmp.png";
+        images.save(img, tmpPath, "png");
+        img.recycle();
+
+        var res = http.postMultipart(CONFIG.apiBase + "/api/eyes", {
+            description: desc || "unknown",
+            screen_time: new Date().toISOString(),
+        }, {
+            files: { screenshot: open(tmpPath) },
+        });
+
+        var data = res.body.json();
+        log("eyes: " + JSON.stringify(data.summary || data));
+        files.remove(tmpPath);
+        return data;
+    } catch (e) {
+        log("eyes: 失败 - " + e);
+        return null;
+    }
+}
+
+function dumpUI() {
+    var root = auto.root;
+    if (!root) return null;
+    var nodes = [];
+    function walk(node, depth) {
+        if (!node || depth > 15) return;
+        nodes.push({
+            text: node.text() || "",
+            desc: node.desc() || "",
+            clickable: node.clickable(),
+            scrollable: node.scrollable(),
+            bounds: node.bounds() ? (node.bounds().left + "," + node.bounds().top + "-" + node.bounds().right + "," + node.bounds().bottom) : "",
+            className: node.className() || "",
+            depth: depth,
+        });
+        for (var i = 0; i < node.childCount(); i++) {
+            walk(node.child(i), depth + 1);
+        }
+    }
+    walk(root, 0);
+    return nodes;
+}
+
+function eyesAnalyze(desc) {
+    log("eyes: 分析界面... (" + desc + ")");
+
+    var uiNodes = dumpUI();
+    var uiSummary = [];
+    if (uiNodes) {
+        for (var i = 0; i < uiNodes.length; i++) {
+            var n = uiNodes[i];
+            if (n.text || n.desc || n.clickable) {
+                uiSummary.push(n);
+            }
+        }
+    }
+
+    var img = captureScreen();
+    var tmpPath = "";
+    if (img) {
+        tmpPath = "/sdcard/autojs_eyes_tmp.png";
+        images.save(img, tmpPath, "png");
+        img.recycle();
+    }
+
+    try {
+        var res = http.postMultipart(CONFIG.apiBase + "/api/eyes", {
+            description: desc || "unknown",
+            ui_tree: JSON.stringify(uiSummary),
+            screen_time: new Date().toISOString(),
+        }, tmpPath ? { files: { screenshot: open(tmpPath) } } : {});
+
+        var data = res.body.json();
+        log("eyes: " + (data.summary || JSON.stringify(data)));
+        if (tmpPath) files.remove(tmpPath);
+        return data;
+    } catch (e) {
+        log("eyes: 上传失败 - " + e);
+        if (tmpPath) files.remove(tmpPath);
+        return null;
+    }
+}
+
+// ============ 养号浏览（改进版） ============
 function browseRun() {
     log("开始养号浏览...");
     app.launch(CONFIG.dianpingPackage);
     sleep(CONFIG.timeout.appLaunch);
 
+    // 先截一张图看看界面结构
+    eyesAnalyze("首页浏览");
+
+    // 随机浏览 1-3 分钟
     browseHomepage();
-    enterRandomShop();
     randomLike();
 
     back();
@@ -39,39 +141,24 @@ function browseHomepage() {
     log("浏览首页，持续 " + duration + " 分钟");
 
     while (Date.now() < endTime) {
-        var distance = random(300, 600);
-        var startX = random(300, 500);
+        var startX = random(200, 400);
         var startY = random(1200, 1600);
-        var endY = startY - distance;
+        var endY = startY - random(300, 600);
         swipe(startX, startY, startX, endY, random(300, 800));
-        sleep(random(2000, 5000));
+        sleep(random(3000, 6000));
 
+        // 偶尔点进去看详情
         if (random(1, 10) > 7) {
             var item = className("android.widget.RelativeLayout").findOne(2000);
             if (item) {
                 item.click();
-                sleep(random(5000, 15000));
+                sleep(random(3000, 8000));
                 scrollDown();
-                sleep(random(2000, 4000));
+                sleep(random(1000, 3000));
                 back();
                 sleep(1000);
             }
         }
-    }
-}
-
-function enterRandomShop() {
-    var shopCards = textContains("人均").find();
-    if (shopCards && shopCards.length > 0) {
-        var idx = random(0, Math.min(shopCards.length - 1, 5));
-        shopCards[idx].click();
-        sleep(3000);
-        for (var i = 0; i < random(2, 4); i++) {
-            scrollDown();
-            sleep(random(2000, 4000));
-        }
-        back();
-        sleep(1000);
     }
 }
 
@@ -114,11 +201,17 @@ function publishSingle(pack) {
     app.launch(CONFIG.dianpingPackage);
     sleep(3000);
 
+    // 先截图分析当前界面
+    eyesAnalyze("发布前-首页");
+
     if (!clickPublishButton()) {
         toast("未找到发布按钮");
+        eyesAnalyze("发布按钮未找到");
         return false;
     }
     sleep(1500);
+
+    eyesAnalyze("发布页面");
 
     inputContent(pack.content);
     sleep(500);
@@ -134,6 +227,8 @@ function publishSingle(pack) {
     }
     sleep(1000);
 
+    eyesAnalyze("发布前确认");
+
     clickSubmitButton();
     sleep(3000);
 
@@ -144,12 +239,9 @@ function publishSingle(pack) {
 
 function fetchContentPack() {
     try {
-        var url = CONFIG.apiBase + "/api/packs?limit=1";
-        var res = http.get(url, { timeout: 10000 });
+        var res = http.get(CONFIG.apiBase + "/api/packs?limit=1", { timeout: 10000 });
         var data = res.body.json();
-        if (data.packs && data.packs.length > 0) {
-            return data.packs[0];
-        }
+        if (data.packs && data.packs.length > 0) return data.packs[0];
         return null;
     } catch (e) {
         log("获取内容失败: " + e);
@@ -216,9 +308,7 @@ function clickSubmitButton() {
 function reportResult(packId, status) {
     try {
         http.postJson(CONFIG.apiBase + "/api/report", {
-            pack_id: packId,
-            status: status,
-            result: {}
+            pack_id: packId, status: status, result: {}
         });
     } catch (e) {
         log("上报失败: " + e);
@@ -230,15 +320,10 @@ function runLoop() {
     var interval = CONFIG.publishInterval;
     var count = 0;
     var maxCount = CONFIG.maxPublishPerDay;
-
-    toast("连续运行: 每 " + interval + " 分钟发布，每天最多 " + maxCount + " 条");
-
+    toast("连续运行: 每 " + interval + " 分钟发布，最多 " + maxCount + " 条");
     while (count < maxCount) {
         browseRun();
-        if (publishSingle()) {
-            count++;
-            toast("已发布 " + count + "/" + maxCount);
-        }
+        if (publishSingle()) { count++; toast("已发布 " + count + "/" + maxCount); }
         if (count < maxCount) {
             var waitMinutes = interval + random(-5, 10);
             toast("等待 " + waitMinutes + " 分钟...");
@@ -249,10 +334,14 @@ function runLoop() {
 }
 
 // ============ 入口 ============
-var MODES = ["养号浏览", "发布笔记", "连续运行"];
+var MODES = ["养号浏览", "发布笔记", "连续运行", "截图分析"];
 
 var choice = dialogs.singleChoice("选择运行模式", MODES, 0);
 if (choice < 0) { toast("已取消"); }
 else if (choice === 0) { browseRun(); }
 else if (choice === 1) { publishRun(); }
 else if (choice === 2) { runLoop(); }
+else if (choice === 3) {
+    // 单独截图分析模式
+    eyesAnalyze("手动截图分析");
+}
