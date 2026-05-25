@@ -384,7 +384,7 @@ function collectRun() {
             for (var j = 0; j < 2 && totalShots < maxShots; j++) {
                 safeScrollDown();
                 sleep(random(2000, 3000));
-                eyesAnalyze("商家详情-滑动"" + (j + 1));
+                eyesAnalyze("商家详情-滑动" + (j + 1));
                 totalShots++;
             }
 
