@@ -9,7 +9,12 @@ import uuid
 from pathlib import Path
 from datetime import datetime
 from http.server import HTTPServer, BaseHTTPRequestHandler
+from socketserver import ThreadingMixIn
 from urllib.parse import urlparse, parse_qs
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    timeout = 60
+    daemon_threads = True
 
 from content_pack import get_pending_packs, update_pack_status, batch_generate
 from page_analyzer import build_page_map, get_analysis_summary
@@ -250,7 +255,7 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
 
 
 def run_server(host="0.0.0.0", port=8090):
-    server = HTTPServer((host, port), DianpingAPIHandler)
+    server = ThreadedHTTPServer((host, port), DianpingAPIHandler)
     print(f"大众点评内容工厂 API 运行在 http://{host}:{port}")
     print(f"  GET  /api/packs           — 获取待发布内容")
     print(f"  GET  /api/status          — 服务状态")

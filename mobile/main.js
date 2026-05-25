@@ -90,6 +90,15 @@ function eyesAnalyze(desc) {
 
     // JSON 上传
     try {
+        // 先测试连通性
+        var testRes = http.get(CONFIG.apiBase + "/api/status", { timeout: 5000 });
+        log("eyes: 连通测试 " + (testRes && testRes.statusCode === 200 ? "OK" : "FAIL"));
+    } catch (e) {
+        log("eyes: 连通测试失败 - " + e);
+        return null;
+    }
+
+    try {
         var payload = {
             description: desc || "unknown",
             ui_tree: JSON.stringify(nodes),
