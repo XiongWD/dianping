@@ -9,6 +9,18 @@ import requests
 from pathlib import Path
 from datetime import datetime
 
+# 加载 .env
+def _load_env():
+    env_file = Path(__file__).parent / ".env"
+    if env_file.exists():
+        for line in env_file.read_text().splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, _, v = line.partition("=")
+                os.environ.setdefault(k.strip(), v.strip())
+
+_load_env()
+
 BASE_DIR = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SCREENSHOT_DIR = BASE_DIR / "output" / "screenshots"
 EXPLORE_LOG = BASE_DIR / "logs" / "explore_log.jsonl"
