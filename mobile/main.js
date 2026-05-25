@@ -251,12 +251,8 @@ function runLoop() {
 // ============ 入口 ============
 var MODES = ["养号浏览", "发布笔记", "连续运行"];
 
-dialogs.singleChoice("选择运行模式", MODES, 0)
-    .then(function(choice) {
-        if (choice < 0) { toast("已取消"); return; }
-        switch (choice) {
-            case 0: browseRun(); break;
-            case 1: publishRun(); break;
-            case 2: runLoop(); break;
-        }
-    });
+var choice = dialogs.singleChoice("选择运行模式", MODES, 0);
+if (choice < 0) { toast("已取消"); }
+else if (choice === 0) { browseRun(); }
+else if (choice === 1) { publishRun(); }
+else if (choice === 2) { runLoop(); }
