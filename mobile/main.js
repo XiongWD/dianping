@@ -303,5 +303,5 @@ else if (choice === 3) {
         app.launch(CONFIG.dianpingPackage);
         sleep(CONFIG.timeout.appLaunch);
     }
-    eyesAnalyze("手动截图分析");
+    eyesAnalyze("截图分析");
 }
