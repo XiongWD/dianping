@@ -172,6 +172,23 @@ class DianpingAPIHandler(BaseHTTPRequestHandler):
             except:
                 pass
 
+            # VL 视觉分析（后台执行，不阻塞响应）
+            if screenshot_file:
+                try:
+                    import threading
+                    def _vl_task():
+                        try:
+                            from vision_analyzer import analyze_for_yolo
+                            vl_result = analyze_for_yolo(str(filepath))
+                            page_type = vl_result.get("page_type", "unknown")
+                            main_content = vl_result.get("main_content", "")[:200]
+                            print(f"[eyes] VL分析: {page_type} | {main_content}")
+                        except Exception as e:
+                            print(f"[eyes] VL分析失败: {e}")
+                    threading.Thread(target=_vl_task, daemon=True).start()
+                except Exception as e:
+                    print(f"[eyes] VL启动失败: {e}")
+
             self._json_response({
                 "ok": True,
                 "summary": f"截图已保存, {node_count} 个控件节点",
